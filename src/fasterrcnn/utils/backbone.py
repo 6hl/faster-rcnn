@@ -17,7 +17,7 @@ class FeatureExtractor(nn.Module):
             for param in self._layers.parameters():
                 param.requires_grad = False
         else:
-            self._feat = torchvision.models.vgg16(weights=None).features[:30]
+            self._layers = torchvision.models.vgg16(weights=None).features[:30]
     
     def forward(self, x):
         """ Class is feature extractor backbone using vgg16

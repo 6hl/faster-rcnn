@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from torch.nn import functional as F
 
 
 class RegionProposalNetwork(nn.Module):
@@ -21,8 +22,8 @@ class RegionProposalNetwork(nn.Module):
             features (torch.Tensor): extracted features
         
         Returns:
-            torch.Tensor: bounding deltas (n, 4)
-            torch.Tensor: predicted targets (fg/bg)
+            torch.Tensor: bounding deltas (b, N, 4)
+            torch.Tensor: predicted targets fg/bg (b, N, 2)
         """
         x = F.relu(self._conv(features))
         target = self._target(x).permute(0, 2, 3, 1).contiguous()

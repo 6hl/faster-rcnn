@@ -10,7 +10,7 @@ class Anchor(object):
         anchor_ratios (list): ratio of anchor sizes for each location
         scales (list): scales of anchors for each location
         anchor_threshold (list): [upper_threshold, lower_threshold]
-            1 > upper_threshold > lower_threshold > 0    
+                                1 > upper_threshold > lower_threshold > 0    
     """
     def __init__(
         self,
@@ -74,7 +74,7 @@ class Anchor(object):
     def _voc_to_yolo(self, bbx):
         """Helper function that returns yolo labeling for bounding box
         Args:
-            bbx (list): [x1, y1, x2, y2]
+            bbx (torch.Tensor): [N, 4] (x1, y1, x2, y2)
         Returns:
             torch.Tensor: (x_center, y_center, width, height)
         """
@@ -105,9 +105,11 @@ class Anchor(object):
 
     def _parameterize(self, source_bxs, dst):
         """
-        bx_list: [predicted_bxs, ground_truth]
-        all inputs (N, 4), x,y,w,h
-                           0,1,2,3
+        Args:
+            source_bxs (torch.tensor[N,4]): source boxes x,y,w,h
+            dst (torch.tensor[N,4]): ground_truth boxes x,y,w,h
+        Returns:
+            torch.tensor[N, 4]
         """
         source_bxs = torchvision.ops.box_convert(source_bxs, in_fmt="xyxy", out_fmt="cxcywh")
         dst = torchvision.ops.box_convert(dst, in_fmt="xyxy", out_fmt="cxcywh")
@@ -122,9 +124,11 @@ class Anchor(object):
     
     def _unparameterize(self, source_bxs, deltas):
         """
-        source_bxs : (n,4) xyxy
-        deltas: delta_x, delta_y, delta_w, delta_h
-        
+        Args: 
+            source_bxs torch.tensor[N,4]: in (x1,y1,x2,y2) order
+            deltas torch.tensor[N,4]: (delta_x, delta_y, delta_w, delta_h)
+        Returns:
+            torch.tensor[N,4]
         """
         source_bxs = torchvision.ops.box_convert(source_bxs, in_fmt="xyxy", out_fmt="cxcywh")
         return torchvision.ops.box_convert(
@@ -147,7 +151,7 @@ class Anchor(object):
             images (torch.Tensor): input image
             feature_maps (torch.Tensor): backbone feature maps
         Returns:
-            torch.Tensor: (feature_maps*anchors, 4)
+            torch.Tensor[feature_maps*anchors, 4]
         """
         h_img, w_img = images.shape[2], images.shape[3]
         h_fmap, w_fmap = feature_maps.shape[2], feature_maps.shape[3]
@@ -183,6 +187,17 @@ class Anchor(object):
         return anchors
     
     def generate_rpn_targets(self, anchors, true_bx):
+        """ Generates RPN Targets
+
+        Args:
+            anchors (torch.tensor[N, 4]): generated anchors
+            true_bx (torch.tensor[N, 4]): ground truth bbxs
+        
+        Returns:
+            true_rpn_delta (torch.tensor[N, 4])
+            true_rpn_targets (torch.tensor[N, 4])
+            rpn_anchor_idx (torch.tensor[N, 4])
+        """
         true_bx = true_bx.reshape(-1,4)
         anchor_iou = torchvision.ops.box_iou(true_bx, anchors)
         max_values, max_idx = anchor_iou.max(dim=0)
@@ -214,14 +229,35 @@ class Anchor(object):
         true_rpn_delta = self._parameterize(anchors[rpn_anchor_idx, :], true_anchor_bxs[rpn_anchor_idx, :])
         return true_rpn_delta, true_rpn_targets, rpn_anchor_idx
 
-    def generate_roi(self, anchors, rpn_bxs, rpn_targets, true_bx, true_targets, img_shape):
+    def generate_roi(
+            self, 
+            anchors, 
+            rpn_delta, 
+            rpn_targets, 
+            true_bx, 
+            true_targets, 
+            img_shape
+        ):
+        """ Generates ROI
+        Args:
+            anchors (torch.tensor[N, 4]): generated anchors
+            rpn_delta (torch.tensor[1, N, 4]): RPN anchor deltas
+            rpn_targets (torch.tensor[1, N, C]): RPN targets
+            true_bx (torch.tensor[N, 4]): ground truth bbxs
+            true_targets (torch.tensor[N, C]): ground truth targets
+            img_shape (torch.tensor[1,3,H,W]): input image shape
+        Returns:
+            batch_roi (torch.tensor) 
+            true_roi_delta (torch.tensor)
+            true_roi_targets (torch.tensor)
+        """
         # TODO: Ensure GPU support
         if self.model.training:
             nms_filter = self.train_nms_filter
         else:
             nms_filter = self.test_nms_filter
 
-        rpn_un_param = self._unparameterize(anchors, rpn_bxs[0].clone().detach())
+        rpn_un_param = self._unparameterize(anchors, rpn_delta[0].clone().detach())
         rpn_anchors = torchvision.ops.clip_boxes_to_image(rpn_un_param, (img_shape[2], img_shape[3]))
         rpn_anchor_idx = torchvision.ops.remove_small_boxes(rpn_anchors, 16.0)
         rpn_anchors = rpn_anchors[rpn_anchor_idx, :]
@@ -235,6 +271,9 @@ class Anchor(object):
         nms_idx = nms_idx[:nms_filter[1]]
         rpn_anchors = rpn_anchors[nms_idx, :]
         rpn_targets = rpn_targets[nms_idx]
+
+        if not self.model.training:
+            return rpn_anchors, None, None
 
         anchor_iou = torchvision.ops.box_iou(true_bx.reshape(-1,4), rpn_anchors)
         max_values, max_idx = anchor_iou.max(dim=0)

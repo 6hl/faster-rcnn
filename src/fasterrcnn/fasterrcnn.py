@@ -155,5 +155,5 @@ class FasterRCNN(nn.Module):
                 true_roi_targets
             )
         else:
-            # TODO: adjust output to be unparameterized boxes from single class
-            return roi_delta, roi_targets
+            idxs = roi_targets.max(dim=1)[1] > 0
+            return self.anchor._unparameterize(batch_rois, roi_delta)[idxs], roi_targets[idxs]

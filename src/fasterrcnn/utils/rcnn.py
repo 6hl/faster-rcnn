@@ -25,8 +25,18 @@ class RCNN(nn.Module):
         )
         return delta
 
-    def forward(self, features, roi):
-        # TODO: adjust roi for batch data list of batch rois
+    def forward(self, features: torch.Tensor, roi: torch.Tensor):
+        """ Forward pass of Region Based CNN
+
+        Args:
+            features (torch.Tensor): extracted features (B, C, H, W)
+            roi (torch.Tensor): regoin of interest(s) (N, 4)
+        
+        Returns:
+            torch.Tensor: bounding deltas (N, 4)
+            torch.Tensor: predicted targets (N, n_channels+1)
+        """
+        
         pooled_features = torchvision.ops.roi_pool(
             features.float(), 
             [roi.float()], 
