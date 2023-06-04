@@ -1,7 +1,6 @@
 from collections import namedtuple
 
 import torch
-import torchvision
 import torch.nn as nn
 from torch.nn import functional as F
 
@@ -32,72 +31,18 @@ class FasterRCNN(nn.Module):
             and it determines bounding box locations for the proposals.
     """
 
-
-    Loss = namedtuple("Loss",
-        [
-            "rpn_bx_loss",
-            "rpn_target_loss",
-            "roi_bx_loss",
-            "roi_target_loss"
-        ]
-    )
     def __init__(self,
         backbone=None,
         n_classes=None,
+        n_anchors = 9,
         *args,
         **kargs
     ):
         super().__init__()
-        n_anchors = 9
-        # TODO: Adjust for different backbone models
-        # TODO: adjust for different anchor sizes and shapes
-        self.anchor = Anchor(self, n_anchors)
-        self._feature_extractor = FeatureExtractor(pretrained=True)
+        self._anchor = Anchor(n_anchors=n_anchors)
+        self._feature_extractor = FeatureExtractor(backbone, pretrained=True)
         self._rpn = RegionProposalNetwork(n_classes=n_classes)
-        self._rcnn = RCNN(self, n_classes=n_classes)
-        n_anchors = 9
-        self.rpn_batch_size = 256
-
-    def loss_func(
-        self, 
-        true_rpn_bxs, 
-        true_rpn_targets, 
-        rpn_idxs,
-        rpn_bxs, 
-        rpn_targets,
-        roi_bxs, 
-        roi_targets, 
-        true_roi_bxs, 
-        true_roi_targets
-    ):
-        """ Function computes the loss for Faster RCNN Model
-
-        Args:
-            rpn_idxs (tensor.Tensor): RPN idxs
-            rpn_bxs (tensor.Tensor): RPN model output delta boxes
-            rpn_targets (tensor.Tensor): RPN model output targets
-            true_rpn_bxs (tensor.Tensor): True delta boxes for RPN
-            true_rpn_targets (tensor.Tensor): True targets for RPN
-            roi_bxs (tensor.Tensor): ROI output delta boxes
-            roi_targets (tensor.Tensor): ROI output targets
-            true_roi_bxs (tensor.Tensor): True ROI delta boxes
-            true_roi_targets (tensor.Tensor): True ROI targets
-
-        Returns:
-            namedtuple: output loss tuple  with idx names:        
-                        'rpn_bx_loss',
-                        'rpn_target_loss',
-                        'roi_bx_loss',
-                        'roi_target_loss'
-
-            torch.Tensor: sum of losses used for backpropogation
-        """
-        rpn_bx_loss = F.smooth_l1_loss(rpn_bxs[0][rpn_idxs], true_rpn_bxs)
-        rpn_target_loss = F.cross_entropy(rpn_targets[0][rpn_idxs], true_rpn_targets, ignore_index=-1)
-        roi_bx_loss = F.smooth_l1_loss(roi_bxs, true_roi_bxs)
-        roi_target_loss = F.cross_entropy(roi_targets, true_roi_targets, ignore_index=-1)
-        losses = [rpn_bx_loss, rpn_target_loss, roi_bx_loss, roi_target_loss]
-        return FasterRCNN.Loss(*losses), sum(losses)
+        self._rcnn = RCNN(n_classes=n_classes)
 
     def forward(self, image_list, true_bx=None, true_targets=None):
         """ Forward pass over model
@@ -123,37 +68,23 @@ class FasterRCNN(nn.Module):
                     for rois
         """
         features = self._feature_extractor(image_list)
-        rpn_delta, rpn_targets = self._rpn(features)
-        anchors = self.anchor.generate_anchor_mesh(
-            image_list, 
-            features,
+        
+        # TODO: Consider dynamic anchor generation
+        self._anchor.forward(image_list, features)
+        
+        rpn_delta, rpn_targets, rpn_loss = self._rpn(features, self._anchor, true_bx, self.training)
+
+        detections, roi_loss = self._rcnn(
+            features, 
+            self._anchor, 
+            rpn_delta, 
+            rpn_targets,
+            image_list.shape, 
+            true_bx, 
+            true_targets,
+            self.training
         )
 
-        batch_rois, true_roi_delta, true_roi_targets = self.anchor.generate_roi(
-            anchors,
-            rpn_delta,
-            rpn_targets,
-            true_bx,
-            true_targets,
-            image_list.shape,
-        )
-        roi_delta, roi_targets = self._rcnn(features, batch_rois)
         if self.training:
-            true_rpn_delta, true_rpn_targets, rpn_idxs = self.anchor.generate_rpn_targets(
-                anchors,
-                true_bx,
-            )
-            return self.loss_func(
-                true_rpn_delta, 
-                true_rpn_targets, 
-                rpn_idxs,
-                rpn_delta, 
-                rpn_targets,
-                roi_delta, 
-                roi_targets, 
-                true_roi_delta, 
-                true_roi_targets
-            )
-        else:
-            idxs = roi_targets.max(dim=1)[1] > 0
-            return self.anchor._unparameterize(batch_rois, roi_delta)[idxs], roi_targets[idxs]
+            return {**rpn_loss, **roi_loss}
+        return detections

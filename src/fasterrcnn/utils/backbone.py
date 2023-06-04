@@ -9,9 +9,12 @@ class FeatureExtractor(nn.Module):
         pretrained (bool): used pretained model if True
                         else don't    
     """
-    def __init__(self, pretrained=True):
+    def __init__(self, backbone=None, pretrained=True):
         super().__init__()
         # TODO: Allow for different backbones
+        if backbone is not None:
+            self._layers = backbone
+
         if pretrained:
             self._layers = torchvision.models.vgg16(weights=torchvision.models.VGG16_Weights.IMAGENET1K_V1).features[:30]
             for param in self._layers.parameters():
