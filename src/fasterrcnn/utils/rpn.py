@@ -1,10 +1,11 @@
-from typing import Tuple
+from typing import Tuple, Union, Dict
 
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
 import torchvision
 
+from .anchor import Anchor
 from .transform import parameterize
 
 
@@ -12,9 +13,9 @@ class RegionProposalNetwork(nn.Module):
     """ Class used to map extracted features to image space using anchors """
     def __init__(
         self, 
-        n_classes, 
-        channels=512, 
-        n_anchors=9
+        n_classes: int, 
+        channels: int = 512, 
+        n_anchors: int = 9
     ):
         super().__init__()
         self.n_classes = n_classes
@@ -22,15 +23,26 @@ class RegionProposalNetwork(nn.Module):
         self._target = nn.Conv2d(in_channels=channels, out_channels=n_anchors*2, kernel_size=(1,1), stride=1, padding=0)
         self._delta = nn.Conv2d(in_channels=channels, out_channels=n_anchors*4, kernel_size=(1,1), stride=1, padding=0)
 
-    def forward(self, features, anchors, true_bx=None, training=True):
+    def forward(
+        self, 
+        features: torch.Tensor, 
+        anchors: Anchor, 
+        true_bx: torch.Tensor = None, 
+        training: bool = True
+    ) -> Tuple[torch.Tensor, torch.Tensor, Union[Dict[str, torch.Tensor], None]]:
         """ Forward pass of RPN
 
         Args:
             features (torch.Tensor): extracted features
+            anchors (Anchor): anchor object
+            true_bx (torch.Tensor): true bounding boxes
+            training (bool): if model is training
         
         Returns:
-            torch.Tensor: bounding deltas (b, N, 4)
-            torch.Tensor: predicted targets fg/bg (b, N, 2)
+            Tuple[torch.Tensor, torch.Tensor, Union[Dict[str, torch.Tensor], None]]
+                torch.Tensor: bounding deltas (b, N, 4)
+                torch.Tensor: predicted targets fg/bg (b, N, 2)
+                Union[None, dict[str, torch.Tensor]]
         """
         self.training = training
         x = F.relu(self._conv(features))
@@ -60,20 +72,21 @@ class RegionProposalNetwork(nn.Module):
     
     def _generate_rpn_targets(
         self,
-        anchor, 
-        true_bx
+        anchor: torch.Tensor, 
+        true_bx: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         
         """ Generates RPN Targets
 
         Args:
-            anchors (torch.tensor[N, 4]): generated anchors
-            true_bx (torch.tensor[N, 4]): ground truth bbxs
+            anchors (torch.Tensor[N, 4]): generated anchors
+            true_bx (torch.Tensor[N, 4]): ground truth bbxs
         
         Returns:
-            true_rpn_delta (torch.tensor[N, 4])
-            true_rpn_targets (torch.tensor[N, 4])
-            rpn_anchor_idx (torch.tensor[N, 4])
+            Tuple[torch.Tensor, torch.Tensor, torch.Tensor]
+                true_rpn_delta (torch.tensor[N, 4])
+                true_rpn_targets (torch.tensor[N, 4])
+                rpn_anchor_idx (torch.tensor[N, 4])
         """
         
         anchors = anchor.anchors

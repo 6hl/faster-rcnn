@@ -1,19 +1,27 @@
-from typing import Tuple
+from typing import Tuple, Union
 
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
 import torchvision
 
+from .anchor import Anchor
 from .transform import parameterize, unparameterize
 
 
 class RCNN(nn.Module):
+    """ Region based CNN
+
+    Args:
+        n_classes (int): number of classes
+        pool_size (int): feature map pooling size
+        pretrained (bool): use pretrained feature maps
+    """
     def __init__(
         self, 
-        n_classes, 
-        pool_size=7, 
-        pretrained=True
+        n_classes: int, 
+        pool_size: int = 7, 
+        pretrained: bool = True
     ):
         super().__init__()
         self.pool_size = pool_size
@@ -26,34 +34,34 @@ class RCNN(nn.Module):
         self._delta = nn.Linear(4096, 4*(n_classes+1))
         self._target = nn.Linear(4096, n_classes+1)
     
-    def _post_process(self, onehot_delta, targets):
-        _, max_idx = targets.max(dim=1)
-        delta = torch.stack(
-            [bx[idx*4:idx*4+4] for bx, idx in zip(onehot_delta, max_idx)],
-            dim=0
-        )
-        return delta
-
     def forward(
         self, 
         features: torch.Tensor, 
-        anchor, 
-        rpn_delta, 
-        rpn_targets, 
-        img_shape,
-        true_bx = None, 
-        true_targets = None, 
+        anchor: Anchor, 
+        rpn_delta: torch.Tensor, 
+        rpn_targets: torch.Tensor, 
+        img_shape: torch.Tensor,
+        true_bx: Union[torch.Tensor, None] = None, 
+        true_targets: Union[torch.Tensor, None] = None, 
         training: bool = True
     ):
         """ Forward pass of Region Based CNN
 
         Args:
             features (torch.Tensor): extracted features (B, C, H, W)
-            roi (torch.Tensor): regoin of interest(s) (N, 4)
+            anchor (nn.Module): anchor object
+            rpn_delta (torch.Tensor): region proposal network delta
+            rpn_targets (torch.Tensor): region proposal network targets
+            img_shape (torch.Tensor): input image shape
+            true_bx (Union[torch.Tensor, None]): true bounding boxes for input image
+            true_targets (Union[torch.Tensor, None]): true targets for input image
+            training (bool): if model is training
         
         Returns:
-            torch.Tensor: bounding deltas (N, 4)
-            torch.Tensor: predicted targets (N, n_channels+1)
+            if training:
+                tuple (None, dict[str, torch.Tensor]): dict contains losses
+            else:
+                tuple (dict[str, torch.Tensor]): dict contains bbx and target
         """
         self.training = training
         roi, true_roi_delta, true_roi_targets = self._generate_roi(
@@ -84,6 +92,14 @@ class RCNN(nn.Module):
 
         return None, loss
     
+    def _post_process(self, onehot_delta, targets):
+        _, max_idx = targets.max(dim=1)
+        delta = torch.stack(
+            [bx[idx*4:idx*4+4] for bx, idx in zip(onehot_delta, max_idx)],
+            dim=0
+        )
+        return delta
+    
     def _compute_loss(
         self, 
         true_roi_delta, 
@@ -97,27 +113,26 @@ class RCNN(nn.Module):
     
     def _generate_roi(
         self, 
-        anchor, 
-        rpn_delta, 
-        rpn_targets, 
-        true_bx, 
-        true_targets, 
-        img_shape
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        anchor: Anchor, 
+        rpn_delta: torch.Tensor, 
+        rpn_targets: torch.Tensor, 
+        true_bx: torch.Tensor, 
+        true_targets: torch.Tensor, 
+        img_shape: torch.Tensor
+    ) -> Tuple[torch.Tensor, Union[torch.Tensor, None], Union[torch.Tensor, None]]:
         
         """ Generates ROI
         Args:
-            anchors (torch.tensor[N, 4]): generated anchors
-            rpn_delta (torch.tensor[1, N, 4]): RPN anchor deltas
-            rpn_targets (torch.tensor[1, N, C]): RPN targets
-            true_bx (torch.tensor[N, 4]): ground truth bbxs
-            true_targets (torch.tensor[N, C]): ground truth targets
-            img_shape (torch.tensor[1,3,H,W]): input image shape
+            anchor (nn.Module): anchor object
+            rpn_delta (torch.Tensor[1, N, 4]): RPN anchor deltas
+            rpn_targets (torch.Tensor[1, N, C]): RPN targets
+            true_bx (torch.Tensor[N, 4]): ground truth bbxs
+            true_targets (torch.Tensor[N, C]): ground truth targets
+            img_shape (torch.Tensor[1,3,H,W]): input image shape
         Returns:
-            batch_roi (torch.tensor) 
-            true_roi_delta (torch.tensor)
-            true_roi_targets (torch.tensor)
+            tuple[torch.Tensor, Union[torch.Tensor, None], Union[torch.Tensor, None]]
         """
+
         anchors = anchor.anchors
         if self.training:
             nms_filter = anchor.train_nms_filter

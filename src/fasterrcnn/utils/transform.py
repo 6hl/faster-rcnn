@@ -2,11 +2,11 @@ import torch
 import torchvision
 
 
-def parameterize(source_bxs, dst) -> torch.Tensor:
+def parameterize(source_bxs: torch.Tensor, dst: torch.Tensor) -> torch.Tensor:
     """
     Args:
-        source_bxs (torch.tensor[N,4]): source boxes x,y,w,h
-        dst (torch.tensor[N,4]): ground_truth boxes x,y,w,h
+        source_bxs (torch.Tensor[N,4]): source boxes x,y,w,h
+        dst (torch.Tensor[N,4]): ground_truth boxes x,y,w,h
     Returns:
         torch.tensor[N, 4]
     """
@@ -22,13 +22,13 @@ def parameterize(source_bxs, dst) -> torch.Tensor:
         ), dim=1
     ).to(torch.float64)
 
-def unparameterize(source_bxs, deltas) -> torch.Tensor:
+def unparameterize(source_bxs: torch.Tensor, deltas: torch.Tensor) -> torch.Tensor:
     """
     Args: 
-        source_bxs torch.tensor[N,4]: in (x1,y1,x2,y2) order
-        deltas torch.tensor[N,4]: (delta_x, delta_y, delta_w, delta_h)
+        source_bxs (torch.Tensor[N,4]): in (x1,y1,x2,y2) order
+        deltas (torch.Tensor[N,4]): (delta_x, delta_y, delta_w, delta_h)
     Returns:
-        torch.tensor[N,4]
+        torch.Tensor[N,4]
     """
 
     source_bxs = torchvision.ops.box_convert(source_bxs, in_fmt="xyxy", out_fmt="cxcywh")

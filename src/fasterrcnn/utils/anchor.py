@@ -11,15 +11,16 @@ class Anchor(nn.Module):
         anchor_ratios (list): ratio of anchor sizes for each location
         scales (list): scales of anchors for each location
         anchor_threshold (list): [upper_threshold, lower_threshold]
-                                1 > upper_threshold > lower_threshold > 0    
+                                1 > upper_threshold > lower_threshold > 0
+        batch_size (list): Batch sizes for detection regions
     """
     def __init__(
         self,
-        n_anchors=9, 
-        anchor_ratios=[0.5, 1, 2], 
-        scales=[8, 16, 32], 
-        anchor_threshold=[0.5, 0.1], 
-        batch_size=[256, 64],
+        n_anchors: int = 9, 
+        anchor_ratios: list = [0.5, 1, 2], 
+        scales: list = [8, 16, 32], 
+        anchor_threshold: list = [0.5, 0.1], 
+        batch_size: list = [256, 64],
     ):
         super().__init__()
         self.n_anchors = torch.tensor(n_anchors)
@@ -31,7 +32,7 @@ class Anchor(nn.Module):
         self.batch_size = batch_size
         self.roi_anchor_threshold = [0.5, 0.0]
     
-    def _ratio_anchors(self, base_anchor, ratios) -> torch.Tensor:
+    def _ratio_anchors(self, base_anchor: torch.Tensor, ratios: torch.Tensor) -> torch.Tensor:
         """Helper function to generate ratio anchors
         Args:
             base_anchor (torch.Tensor): initial anchor location
@@ -52,7 +53,7 @@ class Anchor(nn.Module):
             ]
         )
     
-    def _anchor_set(self, yolo_anchor) -> torch.Tensor:
+    def _anchor_set(self, yolo_anchor: torch.Tensor) -> torch.Tensor:
         """Helper function to generate anchors
         Args:
             yolo_anchor (torch.Tensor): (x_center, y_center, width, height)
@@ -71,7 +72,7 @@ class Anchor(nn.Module):
         ) 
 
     # TODO: Remove for torchvision.ops.box_convert
-    def _voc_to_yolo(self, bbx) -> torch.Tensor:
+    def _voc_to_yolo(self, bbx: torch.Tensor) -> torch.Tensor:
         """Helper function that returns yolo labeling for bounding box
         Args:
             bbx (torch.Tensor): [N, 4] (x1, y1, x2, y2)
@@ -88,7 +89,7 @@ class Anchor(nn.Module):
             ), dim=1
         )
 
-    def _scale_ratio_anchors(self, anchor, scales) -> torch.Tensor:
+    def _scale_ratio_anchors(self, anchor: torch.Tensor, scales: torch.Tensor) -> torch.Tensor:
         """Helper function to scale the ratio anchors
         Args:
             anchor (torch.Tensor): (x_center, y_center, width, height)
@@ -106,7 +107,7 @@ class Anchor(nn.Module):
         )    
  
     # TODO: Make anchor script dynamically adjust scales if needed
-    def forward(self, images, feature_maps) -> torch.Tensor:
+    def forward(self, images: torch.Tensor, feature_maps: torch.Tensor) -> torch.Tensor:
         """Function generates anchor maps for given image and feature maps
         Args:   
             images (torch.Tensor): input image

@@ -1,4 +1,5 @@
 from collections import namedtuple
+from typing import List, Dict, Union
 
 import torch
 import torch.nn as nn
@@ -31,7 +32,8 @@ class FasterRCNN(nn.Module):
             and it determines bounding box locations for the proposals.
     """
 
-    def __init__(self,
+    def __init__(
+        self,
         backbone=None,
         n_classes=None,
         n_anchors = 9,
@@ -44,29 +46,27 @@ class FasterRCNN(nn.Module):
         self._rpn = RegionProposalNetwork(n_classes=n_classes)
         self._rcnn = RCNN(n_classes=n_classes)
 
-    def forward(self, image_list, true_bx=None, true_targets=None):
+    def forward(
+        self, 
+        image_list: torch.Tensor, 
+        true_bx: Union[torch.Tensor, None] = None, 
+        true_targets: Union[torch.Tensor, None] = None
+    ) -> Union[Dict[str, torch.Tensor], List[Dict[str, torch.Tensor]]]:
         """ Forward pass over model
 
         Args:
             image_list (torch.Tensor): input images (b, c, w, h)
-            true_bx (torch.Tensor): input images' true bounding boxes
-            true_targets (torch.Tensor): input images' true class targets
+            true_bx (Union[torch.Tensor, None]): input images' true bounding boxes
+            true_targets (Union[torch.Tensor, None]): input images' true class targets
         
         Returns:
             if training
-                namedtuple: output loss tuple  with idx names:        
-                        'rpn_bx_loss',
-                        'rpn_target_loss',
-                        'roi_bx_loss',
-                        'roi_target_loss'
-
-                torch.Tensor: sum of losses used for backpropogation
+                Dict[str, torch.Tensor]: losses
             
             if testing
-                roi_bxs (torch.Tensor): (n,4) region boxes 
-                roi_targets (torch.Tensor): (n, 4) class prediction targets
-                    for rois
+                list[Dict[str, torch.Tensor]]: detections
         """
+
         features = self._feature_extractor(image_list)
         
         # TODO: Consider dynamic anchor generation

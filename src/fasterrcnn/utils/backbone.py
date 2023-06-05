@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 import torchvision
 
@@ -6,8 +7,8 @@ class FeatureExtractor(nn.Module):
     """ Class used for feature extraction
 
     Args:
-        pretrained (bool): used pretained model if True
-                        else don't    
+        backbone (nn.Module): existing feature extractor model
+        pretrained (bool): used pretained model if True else don't    
     """
     def __init__(self, backbone=None, pretrained=True):
         super().__init__()
@@ -22,7 +23,7 @@ class FeatureExtractor(nn.Module):
         else:
             self._layers = torchvision.models.vgg16(weights=None).features[:30]
     
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         """ Class is feature extractor backbone using vgg16
         Args:
             x (torch.Tensor): input image
